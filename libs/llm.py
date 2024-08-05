@@ -20,14 +20,8 @@ class LLMHandler:
         self.processor = AutoProcessor.from_pretrained(
             self.CHECKPOINT, trust_remote_code=True)
 
-    def describe_image(self, image: Union[np.ndarray, str], task_prompt: str):
-
-        if isinstance(image, str):
-            image = cv2.imread(image)
-        # Convertir imagen a PIL
-        # print("Input res: ", image.shape)
-        pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-
+    def inference_over_image(self, pil_image: Image, task_prompt: str):
+        
         # Preparar entrada para Florence-2
         inputs = self.processor(
             text=task_prompt, images=pil_image, return_tensors="pt").to(self.DEVICE)
@@ -42,61 +36,63 @@ class LLMHandler:
                 # do_sample=False,
                 early_stopping=True
             )
+        return generated_ids
+    
+    def describe_color(self, image: Union[np.ndarray, str], prompt: str):
+        if "color" not in prompt:
+            raise ValueError("Prompt must contain the word 'color'.")
+        # Procesar la imagen
+        if isinstance(image, str):
+            image = cv2.imread(image)
+        
+        # Convertir imagen a PIL
+        # print("Input res: ", image.shape)
+        pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        
+        # Inferir sobre la imagen
+        generated_ids = self.inference_over_image(pil_image, prompt)
 
         # Decodificar y procesar la respuesta
-        generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+        generated_text = self.processor.batch_decode(
+            generated_ids, skip_special_tokens=False)[0]
 
-        if "color" in task_prompt:
-            # Imprimir el texto generado para depuración
-            print("Generated text COLOR:", generated_text)
+        # Imprimir el texto generado para depuración
+        print("Generated text COLOR:", generated_text)
 
-            # Buscar la etiqueta de color en la respuesta
-            if 'The color of the' in generated_text:
-                color = generated_text.split(
-                    'The color of the')[-1].split('is')[1].strip().split('.')[0]
-            else:
-                color = generated_text.strip()
-            return color
+        # Buscar la etiqueta de color en la respuesta
+        if 'The color of the' in generated_text:
+            color = generated_text.split(
+                'The color of the')[-1].split('is')[1].strip().split('.')[0]
+        else:
+            color = generated_text.strip()
+        return color
+
+
+    def describe_image(self, image: Union[np.ndarray, str], task_prompt: str):
+
+        if isinstance(image, str):
+            image = cv2.imread(image)
+            
+        # Convertir imagen a PIL
+        # print("Input res: ", image.shape)
+        pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         
+        # Inferir sobre la imagen
+        generated_ids = self.inference_over_image(pil_image, task_prompt)
+
+        # Decodificar y procesar la respuesta
+        generated_text = self.processor.batch_decode(
+            generated_ids, skip_special_tokens=False)[0]
+
+        # Procesar la respuesta
         parsed_answer = self.processor.post_process_generation(
             generated_text,
             task=task_prompt,
             image_size=(pil_image.width, pil_image.height)
         )
-            
+
         return parsed_answer
 
-    def describe_image_on_crop(self, name,  box, image_path, task_prompt: str, aux_prompt: Union[str, None] = None):
-
-        aux_result = None
-        # Obtener el objeto del frame
-        image = cv2.imread(image_path)
-        if image is None:
-            print(f"Image not found at {image_path}.")
-            return
-
-        # Recortar el objeto de la imagen
-        x1, y1, x2, y2 = map(int, [box['x1'], box['y1'], box['x2'], box['y2']])
-        cropped_image = image[y1:y2, x1:x2]
-
-        # Aumentar el tamaño de la imagen recortada para una mejor visualización
-        resized_cropped_image = cv2.resize(cropped_image, (300, 300))
-
-        # Describe object
-        result = self.describe_image(resized_cropped_image, task_prompt)
-
-        if "color" in task_prompt:
-            output_result_test = f"The predominant color of the {name} is {result}."
-            return output_result_test
-
-        
-        if aux_prompt is not None:
-            aux_result = self.describe_image(resized_cropped_image, aux_prompt)
-    
-        return {
-            "result_aux": aux_result,
-            "result_task": result
-        }
 
 if __name__ == '__main__':
     llm = LLMHandler()
@@ -108,7 +104,7 @@ if __name__ == '__main__':
     while True:
         time1 = time.time()
         ret, frame = cap.read()
-        
+
         # REsize
         # frame = cv2.resize(frame, (320, 240))
         if not ret:
@@ -124,6 +120,6 @@ if __name__ == '__main__':
         result = llm.describe_image(frame,  prompt)
         print("Result: ", result)
         time2 = time.time()
-        
+
         # Print FPS
         print("FPS: , Time (ms)", 1/(time2-time1), (time2-time1)*1000)
