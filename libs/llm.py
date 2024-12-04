@@ -10,15 +10,14 @@ from transformers import AutoProcessor, AutoModelForCausalLM
 class LLMHandler:
 
     # Cargar Florence-2
-    CHECKPOINT = "microsoft/Florence-2-base-ft"
     DEVICE = torch.device("cuda" if torch.cuda.is_available()
                           else "cpu")  # mps not supported yet
 
-    def __init__(self):
+    def __init__(self, model_id: str = "microsoft/Florence-2-base-ft"):
         self.model = AutoModelForCausalLM.from_pretrained(
-            self.CHECKPOINT, trust_remote_code=True).to(self.DEVICE)
+            model_id, trust_remote_code=True).to(self.DEVICE)
         self.processor = AutoProcessor.from_pretrained(
-            self.CHECKPOINT, trust_remote_code=True)
+            model_id, trust_remote_code=True)
 
     def inference_over_image(self, pil_image: Image, task_prompt: str):
         

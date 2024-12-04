@@ -3,8 +3,13 @@ import json
 from typing import Union
 
 class RedisClient:
-    def __init__(self, host='localhost', port=6379, db=0):
-        self.client = redis.StrictRedis(host=host, port=port, db=db, decode_responses=True)
+    def __init__(self, host='localhost', port=6379, db=0, password=None):
+        self.client = redis.StrictRedis(
+            host=host, 
+            port=port,
+            password=password,
+            db=db, 
+            decode_responses=True)
     
     def set_value(self, key, value):
         try:
@@ -14,14 +19,9 @@ class RedisClient:
             print(f"Error setting value in Redis: {e}")
             return False
 
-    def get_value(self, key) -> Union[str, dict, None]:
+    def get_value(self, key):
         try:
             value = self.client.get(key)
-            # Attempt to parse the value as JSON
-            try:
-                value = json.loads(value)
-            except (TypeError, json.JSONDecodeError):
-                pass
             return value
         except Exception as e:
             print(f"Error getting value from Redis: {e}")

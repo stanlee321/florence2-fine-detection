@@ -63,3 +63,6 @@ This project is designed to process video data, leveraging various services such
 ## Contribution
 
 Feel free to contribute to this project by submitting pull requests or opening issues for bugs and feature requests.
+
+FLASH_ATTENTION_SKIP_CUDA_BUILD=TRUE pip install flash-attn --no-build-isolation
+optimum-cli export onnx --model microsoft/Florence-2-base-ft florence_base_onnx/  --task text-generation --trust-remote-code

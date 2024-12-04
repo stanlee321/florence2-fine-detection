@@ -52,7 +52,7 @@ class KafkaHandler:
             topic,
             bootstrap_servers=self.bootstrap_servers,
             auto_offset_reset=auto_offset_reset,
-            enable_auto_commit=True,
+            enable_auto_commit=False,
             group_id=group_id,
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
