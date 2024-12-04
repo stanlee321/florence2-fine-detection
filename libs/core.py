@@ -27,6 +27,7 @@ class Application:
                  output_dir: str = "./tmp", 
                  bucket_name: str = "my-bucket",
                  llm_model_id: str = "microsoft/Florence-2-base-ft",
+                 topic_output: str = "video-summary",
                  ):
 
         self.client_minio = Minio(minio_host,
@@ -51,6 +52,9 @@ class Application:
         self.od_prompt = "<OD>"
         self.drc_prompt = "<MORE_DETAILED_CAPTION>"
         self.bucket_name = bucket_name
+        
+        self.topic_output = topic_output
+        
         
     def set_names(self, video_id: str):
         self.workdir = os.path.join(self.output_dir, video_id)
@@ -366,7 +370,7 @@ class Application:
         input_key = input_message['full_data']
         
         # Parse the input key
-        video_id, label = self.parse_string(input_key)
+        video_id, _ = self.parse_string(input_key)
         
         # Get the output value from Redis
         output_value: str = self.redis_client.get_value(input_key)
@@ -402,17 +406,31 @@ class Application:
             with open(timestamp_data_path, 'w') as f:
                 json.dump(detected_image_track, f)
 
-            # Save to REDIS the processed data
-            key = f"video:{video_id}_label:{label}_task:fine"
-            # value = json.dumps(detected_image_track)
-            
-            # Upload to MinIO
+            #########################################################
+            # Upload the complete data to MinIO
             self.client_minio.fput_object(
-                self.bucket_name, f"{video_id}/{key}.json", timestamp_data_path)
+                self.bucket_name, f"{video_id}/fine_detections/complete.json", timestamp_data_path)
 
-            # Save the processed data to Redis
 
-            # self.redis_client.set_value(key, value)
+            #########################################################
+            # Single data and local path
+            single_data_path = os.path.join(self.workdir, f"{timestamp}.json")
+            with open(single_data_path, 'w') as f:
+                json.dump({
+                    "timestamp": timestamp,
+                    "data": llm_results
+                    }, f)
+            self.client_minio.fput_object(
+                self.bucket_name, f"{video_id}/fine_detections/{timestamp}.json", single_data_path)
+            
+            #########################################################
+            # Send to Kafka the processed data
+            self.kafka_handler.produce_message(
+                topic_input=self.topic_output,
+                message=json.dumps({
+                    "timestamp": timestamp,
+                    "data": llm_results
+                }))
 
     def run(self, offset: str = 'latest', topic_input: str = 'fine-detections'):
         print("Waiting for messages...")

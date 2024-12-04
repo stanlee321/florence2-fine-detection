@@ -9,6 +9,7 @@ minio_url = f"{SERVER_IP}:9000"
 llm_model_id = "microsoft/Florence-2-base-ft"
 brokers = [f'{SERVER_IP}:9092']
 redis_host = f'{SERVER_IP}'
+TOPIC_OUTPUT = "video-summary"
 
 
 if __name__ == '__main__':
@@ -25,7 +26,8 @@ if __name__ == '__main__':
                       minio_secret_key = minio_secret,
                       llm_model_id = llm_model_id,
                       bootstrap_servers = brokers,
-                      redis_host = redis_host)
+                      redis_host = redis_host,
+                    topic_output = TOPIC_OUTPUT)
     
     # prompt_color_lambda = lambda x: f"<COLOR_DETECTION> The {x} is"
 
