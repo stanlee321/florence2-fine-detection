@@ -70,6 +70,9 @@ class Application:
 
     @staticmethod
     def parse_string(input_string):
+        print("Parsing string...")
+        print(input_string)
+        print("--------------------------------")
         pattern = r"video:(?P<video>[a-zA-Z0-9\-]+)_label:(?P<label>\w+)"
         match = re.match(pattern, input_string)
 
@@ -367,6 +370,9 @@ class Application:
     def process_message(self, message):
         input_message: dict = message.value
         
+        print("Processing message...")
+        print(input_message)
+        print("--------------------------------")
         input_key = input_message['full_data']
         
         # Parse the input key
