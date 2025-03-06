@@ -55,7 +55,6 @@ class Application:
         
         self.topic_output = topic_output
         
-        
     def set_names(self, video_id: str):
         self.workdir = os.path.join(self.output_dir, video_id)
         os.makedirs(self.workdir, exist_ok=True)
@@ -383,6 +382,8 @@ class Application:
         model_id = input_message['model_id']
         full_data = input_message['full_data']
         
+        self.set_names(video_id)
+
         # Parse the input key
         data_path = f"{self.workdir}/{video_id}.json"
         self.download_file_using_requests(full_data, data_path)
