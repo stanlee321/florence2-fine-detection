@@ -391,12 +391,6 @@ class Application:
         with open(data_path, 'r') as f:
             output_value = json.load(f)
         
-        try:
-            output_value:dict = json.loads(output_value)
-        except Exception as e:
-            print("Error parsing the output value, ", e)
-            return
-
         print(output_value.keys())
         # Extract the relevant data
         extracted_data = self.extract_relevant_data(output_value)
