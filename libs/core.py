@@ -433,13 +433,15 @@ class Application:
             self.client_minio.fput_object(
                 self.bucket_name, f"{video_id}/fine_detections/{timestamp}.json", single_data_path)
             
+            # Full minio path
+            full_minio_path = f"{self.bucket_name}/{video_id}/fine_detections/{timestamp}.json"
             #########################################################
             # Send to Kafka the processed data
             self.kafka_handler.produce_message(
                 topic_input=self.topic_output,
                 message=json.dumps({
                     "timestamp": timestamp,
-                    "data": llm_results
+                    "full_minio_path": full_minio_path
                 }))
 
     def get_uuid(self):
