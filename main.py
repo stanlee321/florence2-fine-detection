@@ -1,5 +1,4 @@
 from libs.core import Application
-import uuid
 import os
 from dotenv import load_dotenv
 

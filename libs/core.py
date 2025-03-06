@@ -7,7 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from typing import List, Union
 from minio import Minio
-
+import requests
 import uuid
 
 # MinIO
@@ -367,19 +367,28 @@ class Application:
             cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
         return image
 
+    def download_file_using_requests(self, url, local_path):
+        response = requests.get(url)
+        with open(local_path, 'wb') as f:
+            f.write(response.content)
+    
     def process_message(self, message):
         input_message: dict = message.value
         
         print("Processing message...")
         print(input_message)
         print("--------------------------------")
-        input_key = input_message['full_data']
+        video_id = input_message['general_id']
+        job_id = input_message['job_id']
+        model_id = input_message['model_id']
+        full_data = input_message['full_data']
         
         # Parse the input key
-        video_id, _ = self.parse_string(input_key)
+        data_path = f"{self.workdir}/{video_id}.json"
+        self.download_file_using_requests(full_data, data_path)
         
-        # Get the output value from Redis
-        output_value: str = self.redis_client.get_value(input_key)
+        with open(data_path, 'r') as f:
+            output_value = json.load(f)
         
         try:
             output_value:dict = json.loads(output_value)
@@ -438,9 +447,12 @@ class Application:
                     "data": llm_results
                 }))
 
+    def get_uuid(self):
+        return str(uuid.uuid4())
+    
     def run(self, offset: str = 'latest', topic_input: str = 'fine-detections'):
         print("Waiting for messages...")
-        topic_group = f'fine-group-{uuid.uuid4()}'
+        topic_group = f'fine-group-{self.get_uuid()}'
         # # Create Kafka consumer
         consumer = self.kafka_handler.create_consumer(topic_input, topic_group, auto_offset_reset=offset)
 
