@@ -1,22 +1,26 @@
 from libs.core import Application
 import uuid
+import os
+from dotenv import load_dotenv
 
-SERVER_IP = "192.168.1.19"
+load_dotenv()  
+
+SERVER_IP = os.getenv('IP_ADDRESS')
 API_BASE_URL = f"http://{SERVER_IP}:8003"
-minio_key = "c3aFDmKuGhPCSxkpRDGf"
-minio_secret = "MLYz9tZI3h4xZAwBl8llyEtX6R07YcMuRdSYPIcx"
+minio_key = os.getenv('MINIO_ACCESS_KEY')
+minio_secret = os.getenv('MINIO_SECRET_KEY')
 minio_url = f"{SERVER_IP}:9000"
 llm_model_id = "microsoft/Florence-2-base-ft"
 brokers = [f'{SERVER_IP}:9092']
 redis_host = f'{SERVER_IP}'
-TOPIC_OUTPUT = "video-summary"
+TOPIC_OUTPUT = "video-ls"
 
 
 if __name__ == '__main__':
 
 
     # Kafka topics
-    topic_input = 'fine-detections'
+    topic_input = 'video-input-details'
     bucket_name = "my-bucket"
 
 

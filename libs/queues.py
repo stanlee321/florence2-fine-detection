@@ -3,6 +3,9 @@ from kafka import KafkaProducer, KafkaConsumer
 import logging
 import numpy as np
 
+import os
+
+IP_ADDRESS = os.getenv('IP_ADDRESS')
 
 class KafkaHandler:
     def __init__(self, bootstrap_servers, log_file='kafka_handler.log'):
@@ -77,7 +80,7 @@ class KafkaHandler:
 if __name__ == "__main__":
     
     print("Startingg...")
-    kafka_address = '192.168.1.12:9093'
+    kafka_address = f'{IP_ADDRESS}:9093'
     
     kafka_handler = KafkaHandler(bootstrap_servers=[kafka_address])
     
