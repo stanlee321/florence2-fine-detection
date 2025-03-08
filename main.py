@@ -15,6 +15,11 @@ redis_host = f'{SERVER_IP}'
 TOPIC_OUTPUT = "video-ls"
 
 
+BACKEND_EMAIL =  os.getenv("BACKEND_EMAIL", "admin@example.com")
+BACKEND_PASSWORD = os.getenv("BACKEND_PASSWORD", "Adminpassword1@")
+BACKEND_BASE_URL = f"http://{SERVER_IP}:3001"
+
+
 if __name__ == '__main__':
 
 
@@ -30,7 +35,10 @@ if __name__ == '__main__':
                       llm_model_id = llm_model_id,
                       bootstrap_servers = brokers,
                       redis_host = redis_host,
-                    topic_output = TOPIC_OUTPUT)
+                      topic_output = TOPIC_OUTPUT,
+                      backend_base_url = BACKEND_BASE_URL,
+                      backend_email = BACKEND_EMAIL,
+                      backend_password = BACKEND_PASSWORD)
     
     # prompt_color_lambda = lambda x: f"<COLOR_DETECTION> The {x} is"
 

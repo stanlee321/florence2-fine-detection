@@ -13,7 +13,7 @@ import uuid
 # MinIO
 from libs.queues import KafkaHandler
 from libs.redis_service import RedisClient
-
+from libs.api import UpdateStatus
 from libs.llm import LLMHandler
 
 
@@ -28,6 +28,9 @@ class Application:
                  bucket_name: str = "my-bucket",
                  llm_model_id: str = "microsoft/Florence-2-base-ft",
                  topic_output: str = "video-summary",
+                 backend_base_url: str = "https://backend.ai.drc-ai.com",
+                 backend_email: str = "admin@drc-ai.com",
+                 backend_password: str = "admin",
                  ):
 
         self.client_minio = Minio(minio_host,
@@ -54,6 +57,9 @@ class Application:
         self.bucket_name = bucket_name
         
         self.topic_output = topic_output
+        
+        self.updater = UpdateStatus(backend_base_url, backend_email, backend_password)
+
         
     def set_names(self, video_id: str):
         self.workdir = os.path.join(self.output_dir, video_id)
@@ -382,6 +388,8 @@ class Application:
         model_id = input_message['model_id']
         full_data = input_message['full_data']
         
+        self.updater.run(job_id, "Processing")
+        
         self.set_names(video_id)
 
         # Parse the input key
@@ -443,6 +451,8 @@ class Application:
                     "timestamp": timestamp,
                     "full_minio_path": full_minio_path
                 }))
+            self.updater.run(job_id, "Finished")
+
 
     def get_uuid(self):
         return str(uuid.uuid4())
