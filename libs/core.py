@@ -446,7 +446,7 @@ class Application:
             #########################################################
             # Send to Kafka the processed data
             self.kafka_handler.produce_message(
-                topic_input=self.topic_output,
+                topic=self.topic_output,
                 message=json.dumps({
                     "timestamp": timestamp,
                     "full_minio_path": full_minio_path
