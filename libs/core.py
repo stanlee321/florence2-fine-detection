@@ -427,7 +427,7 @@ class Application:
             #########################################################
             # Upload the complete data to MinIO
             self.client_minio.fput_object(
-                self.bucket_name, f"{video_id}/fine_detections/complete.json", timestamp_data_path)
+                self.bucket_name, f"{video_id}/{job_id}/fine_detections/complete.json", timestamp_data_path)
 
 
             #########################################################
@@ -439,10 +439,10 @@ class Application:
                     "data": llm_results
                     }, f)
             self.client_minio.fput_object(
-                self.bucket_name, f"{video_id}/fine_detections/{timestamp}.json", single_data_path)
+                self.bucket_name, f"{video_id}/{job_id}/fine_detections/{timestamp}.json", single_data_path)
             
             # Full minio path
-            full_minio_path = f"{self.bucket_name}/{video_id}/fine_detections/{timestamp}.json"
+            full_minio_path = f"{self.bucket_name}/{video_id}/{job_id}/fine_detections/{timestamp}.json"
             #########################################################
             # Send to Kafka the processed data
             self.kafka_handler.produce_message(
