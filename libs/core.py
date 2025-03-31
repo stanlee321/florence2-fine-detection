@@ -349,7 +349,7 @@ class Application:
                     remote_annotated_path_ci = f"{video_id}/{job_id}/images/annotated_images_ci/{local_annotated_path_ci_base}"
                     # Upload the annotated image to MinIO
                     self.client_minio.fput_object(
-                        bucket_name,remote_annotated_path_ci , annotated_image_path_ci)
+                        bucket_name, remote_annotated_path_ci , annotated_image_path_ci)
 
                     results_ci["drc"] = drc_ci['<MORE_DETAILED_CAPTION>']
                     results_ci["od"] = od_ci_od
@@ -384,7 +384,8 @@ class Application:
         print("Processing message...")
         print(input_message)
         print("--------------------------------")
-        video_id = input_message['general_id']
+        
+        video_id = input_message['video_id']
         job_id = input_message['job_id']
         model_id = input_message['model_id']
         full_data = input_message['full_data']
@@ -428,8 +429,9 @@ class Application:
 
             #########################################################
             # Upload the complete data to MinIO
+            json_remote_path = f"{video_id}/{job_id}/fine_detections/complete.json"
             self.client_minio.fput_object(
-                self.bucket_name, f"{video_id}/{job_id}/fine_detections/complete.json", timestamp_data_path)
+                self.bucket_name, json_remote_path, timestamp_data_path)
 
 
             #########################################################
