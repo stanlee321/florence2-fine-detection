@@ -453,6 +453,7 @@ class Application:
                     "timestamp": timestamp,
                     "full_minio_path": full_minio_path
                 }))
+            
             self.updater.run(job_id, "Finished")
 
 
