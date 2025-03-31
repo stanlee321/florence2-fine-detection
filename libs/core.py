@@ -220,7 +220,8 @@ class Application:
                         bucket_name: str,
                         details: List[dict],
                         timestamp: str,
-                        video_id: str):
+                        video_id: str,
+                        job_id: str):
 
         image_results = []
         detected_image_track = []
@@ -345,7 +346,7 @@ class Application:
                     cv2.imwrite(annotated_image_path_ci,
                                 image_annotated_bbox_ci)
                     
-                    remote_annotated_path_ci = f"{video_id}/images/annotated_images_ci/{local_annotated_path_ci_base}"
+                    remote_annotated_path_ci = f"{video_id}/{job_id}/images/annotated_images_ci/{local_annotated_path_ci_base}"
                     # Upload the annotated image to MinIO
                     self.client_minio.fput_object(
                         bucket_name,remote_annotated_path_ci , annotated_image_path_ci)
@@ -414,7 +415,8 @@ class Application:
                 self.bucket_name,
                 details,
                 timestamp,
-                video_id)
+                video_id,
+                job_id)
 
             timestamp_data_path = self.set_end_json(timestamp)
 
