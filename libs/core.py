@@ -284,7 +284,7 @@ class Application:
 
                 # Save the annotated image
                 cv2.imwrite(annotated_image_path, image_annotated)
-                annotated_image_path_remote = f"{video_id}/images/annotated_images/{timestamp}_frame_{frame_number}_annotated.jpg"
+                annotated_image_path_remote = f"{video_id}/{job_id}/images/annotated_images/{timestamp}_frame_{frame_number}_annotated.jpg"
                 # Upload the annotated image to MinIO
                 self.client_minio.fput_object(
                     bucket_name, annotated_image_path_remote , annotated_image_path)
