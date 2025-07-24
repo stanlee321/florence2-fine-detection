@@ -108,6 +108,18 @@ class LLMHandler:
             image_size=(pil_image.width, pil_image.height)
         )
         
+        # Si el prompt es para descripción en español, extraer solo el texto
+        if "español" in task_prompt and isinstance(parsed_answer, dict):
+            # El modelo puede devolver diferentes formatos, intentar extraer el texto
+            if task_prompt in parsed_answer:
+                parsed_answer = {task_prompt: parsed_answer[task_prompt]}
+            else:
+                # Si no encuentra la key exacta, buscar la primera que contenga texto
+                for key, value in parsed_answer.items():
+                    if isinstance(value, str) and len(value) > 10:
+                        parsed_answer = {task_prompt: value}
+                        break
+        
         total_time = time.time() - start_time
         print(f"[LLM] Total time for describe_image: {total_time:.3f}s")
 

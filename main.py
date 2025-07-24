@@ -25,11 +25,18 @@ if __name__ == '__main__':
     # Check for debug mode
     DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
     MAX_TIMESTAMPS = int(os.getenv('MAX_TIMESTAMPS', '0'))  # 0 = process all
+    PROCESS_MODE = os.getenv('PROCESS_MODE', 'FULL').upper()  # FULL, FAST, SAMPLE
+    MAX_CROPS_PER_IMAGE = int(os.getenv('MAX_CROPS_PER_IMAGE', '0'))  # 0 = process all
+    SCALE_FACTOR = float(os.getenv('SCALE_FACTOR', '8.0'))  # Default 8x
     
     if DEBUG_MODE:
         print("\n[DEBUG MODE ENABLED]")
         if MAX_TIMESTAMPS > 0:
             print(f"[DEBUG] Will process only first {MAX_TIMESTAMPS} timestamps")
+        print(f"[DEBUG] Process mode: {PROCESS_MODE}")
+        if MAX_CROPS_PER_IMAGE > 0:
+            print(f"[DEBUG] Max crops per image: {MAX_CROPS_PER_IMAGE}")
+        print(f"[DEBUG] Scale factor: {SCALE_FACTOR}x")
         print("\n")
 
     # Kafka topics

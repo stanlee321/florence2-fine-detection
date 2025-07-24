@@ -10,6 +10,8 @@ from minio import Minio
 import requests
 import uuid
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing
 
 # MinIO
 from libs.queues import KafkaHandler
@@ -53,8 +55,103 @@ class Application:
         # LLM Handler
         self.llm_handler = LLMHandler(model_id=llm_model_id)
 
+        # Prompts en español
         self.od_prompt = "<OD>"
-        self.drc_prompt = "<MORE_DETAILED_CAPTION>"
+        self.drc_prompt = "Describe detalladamente en español lo que ves en esta imagen"
+        
+        # Diccionario de traducción de etiquetas
+        self.label_translations = {
+            "person": "persona",
+            "car": "auto",
+            "truck": "camión",
+            "bus": "autobús",
+            "motorcycle": "motocicleta",
+            "bicycle": "bicicleta",
+            "backpack": "mochila",
+            "handbag": "bolso",
+            "suitcase": "maleta",
+            "bottle": "botella",
+            "cup": "taza",
+            "fork": "tenedor",
+            "knife": "cuchillo",
+            "spoon": "cuchara",
+            "bowl": "tazón",
+            "banana": "plátano",
+            "apple": "manzana",
+            "sandwich": "sándwich",
+            "orange": "naranja",
+            "broccoli": "brócoli",
+            "carrot": "zanahoria",
+            "hot dog": "hot dog",
+            "pizza": "pizza",
+            "donut": "dona",
+            "cake": "pastel",
+            "chair": "silla",
+            "couch": "sofá",
+            "potted plant": "planta en maceta",
+            "bed": "cama",
+            "dining table": "mesa de comedor",
+            "toilet": "inodoro",
+            "tv": "televisor",
+            "laptop": "laptop",
+            "mouse": "ratón",
+            "remote": "control remoto",
+            "keyboard": "teclado",
+            "cell phone": "teléfono celular",
+            "microwave": "microondas",
+            "oven": "horno",
+            "toaster": "tostadora",
+            "sink": "lavabo",
+            "refrigerator": "refrigerador",
+            "book": "libro",
+            "clock": "reloj",
+            "vase": "florero",
+            "scissors": "tijeras",
+            "teddy bear": "oso de peluche",
+            "hair drier": "secador de pelo",
+            "toothbrush": "cepillo de dientes",
+            "sneakers": "zapatillas",
+            "walking_shoe": "zapato para caminar",
+            "shoe": "zapato",
+            "hat": "sombrero",
+            "cap": "gorra",
+            "sunglasses": "lentes de sol",
+            "bag": "bolsa",
+            "tie": "corbata",
+            "suitcase": "maleta",
+            "frisbee": "frisbee",
+            "skis": "esquís",
+            "snowboard": "tabla de snowboard",
+            "sports ball": "pelota deportiva",
+            "kite": "cometa",
+            "baseball bat": "bate de béisbol",
+            "baseball glove": "guante de béisbol",
+            "skateboard": "patineta",
+            "surfboard": "tabla de surf",
+            "tennis racket": "raqueta de tenis",
+            "umbrella": "paraguas",
+            "wheel": "rueda",
+            "suv": "camioneta",
+            "minivan": "minivan",
+            "sedan": "sedán",
+            "van": "furgoneta",
+            "pickup truck": "camioneta pickup",
+            "traffic light": "semáforo",
+            "fire hydrant": "hidrante",
+            "stop sign": "señal de alto",
+            "parking meter": "parquímetro",
+            "bench": "banca",
+            "bird": "pájaro",
+            "cat": "gato",
+            "dog": "perro",
+            "horse": "caballo",
+            "sheep": "oveja",
+            "cow": "vaca",
+            "elephant": "elefante",
+            "bear": "oso",
+            "zebra": "cebra",
+            "giraffe": "jirafa"
+        }
         self.bucket_name = bucket_name
         
         self.topic_output = topic_output
@@ -73,6 +170,13 @@ class Application:
     def get_local_path(self, remote_path: str):
         image_path = os.path.join(self.workdir, remote_path.split("/")[-1])
         return image_path
+    
+    def translate_label(self, label: str) -> str:
+        """Traduce etiquetas de inglés a español"""
+        # Convertir a minúsculas para buscar
+        label_lower = label.lower()
+        # Si existe traducción, usarla. Si no, devolver original
+        return self.label_translations.get(label_lower, label)
 
     @staticmethod
     def parse_string(input_string):
@@ -222,7 +326,8 @@ class Application:
                         details: List[dict],
                         timestamp: str,
                         video_id: str,
-                        job_id: str):
+                        job_id: str,
+                        callback_fn=None):
 
         image_results = []
         detected_image_track = []
@@ -255,10 +360,17 @@ class Application:
             download_time = time.time() - download_start
             print(f"[MinIO] Downloaded in {download_time:.2f}s")
 
-            # Describe whole image first.
-            print(f"[LLM] Starting DRC (detailed caption) for main image...")
-            drc_main = self.llm_handler.describe_image(
-                image_path, task_prompt=self.drc_prompt)
+            # Check if we should skip main image processing
+            CROPS_ONLY = os.getenv('CROPS_ONLY', 'false').lower() == 'true'
+            
+            if CROPS_ONLY:
+                print(f"[CROPS_ONLY] Skipping main image DRC")
+                drc_main = {'<MORE_DETAILED_CAPTION>': 'Skipped - CROPS_ONLY mode'}
+            else:
+                # Describe whole image first.
+                print(f"[LLM] Starting DRC (detailed caption) for main image...")
+                drc_main = self.llm_handler.describe_image(
+                    image_path, task_prompt=self.drc_prompt)
 
             # OD in the whole image
             print(f"[LLM] Starting OD (object detection) for main image...")
@@ -271,7 +383,7 @@ class Application:
                 "main_image": remote_patch,
                 "results": {
                     "main": {
-                        "drc_main": drc_main['<MORE_DETAILED_CAPTION>'],
+                        "drc_main": drc_main.get(self.drc_prompt, drc_main.get('<MORE_DETAILED_CAPTION>', '')),
                         "od_main": od_main['<OD>'],
                         "annotated_image_path": None,
                     },
@@ -302,80 +414,173 @@ class Application:
                 
                 # for each bbox in the OD, crop the image and do OD
                 od_results_crop = []
-                scale_factor = 8
+                
+                # Get configuration from environment
+                PROCESS_MODE = os.getenv('PROCESS_MODE', 'FULL').upper()
+                MAX_CROPS_PER_IMAGE = int(os.getenv('MAX_CROPS_PER_IMAGE', '0'))
+                scale_factor = float(os.getenv('SCALE_FACTOR', '8.0'))
                 padding = 10
-                for index , (bbox_main, label_main) in enumerate(zip(od_main_od['bboxes'], od_main_od['labels'])):
-                    label_main = label_main.replace(" ", "_").replace("/", "_")
-                    results_ci = {}
+                
+                # Check if we should process crops
+                CROPS_ONLY = os.getenv('CROPS_ONLY', 'false').lower() == 'true'
+                
+                if PROCESS_MODE == 'FAST' and not CROPS_ONLY:
+                    print(f"[FAST MODE] Skipping {len(od_main_od['bboxes'])} crops")
+                    process_results["results"]["crop"] = []
+                else:
+                    # Process crops (main functionality)
+                    print(f"[CROPS] Processing {len(od_main_od['bboxes'])} detected objects...")
+                    bboxes_to_process = list(zip(od_main_od['bboxes'], od_main_od['labels']))
                     
-                    # Crop the image and store the results in a dictionary
-                    cropped_image = self.crop_image(
-                        image_path, 
-                        bbox_main, from_llm=True,
-                        padding=padding,
-                        )
-
-                    # Enhance the image
-                    cropped_image = self.enhance_image(
-                        cropped_image, scale_factor=scale_factor)
+                    # Limit crops if configured
+                    if MAX_CROPS_PER_IMAGE > 0 and len(bboxes_to_process) > MAX_CROPS_PER_IMAGE:
+                        print(f"[LIMIT] Processing only first {MAX_CROPS_PER_IMAGE} of {len(bboxes_to_process)} crops")
+                        bboxes_to_process = bboxes_to_process[:MAX_CROPS_PER_IMAGE]
                     
-                    # Do OD in the croped image
-                    print(f"[LLM] Processing crop {index+1}/{len(od_main_od['bboxes'])} - {label_main}")
-                    od_ci = self.llm_handler.describe_image(
-                        cropped_image, task_prompt=self.od_prompt)
+                    # Check if parallel processing is enabled
+                    PARALLEL_PROCESSING = os.getenv('PARALLEL_PROCESSING', 'true').lower() == 'true'
+                    MAX_WORKERS = int(os.getenv('MAX_WORKERS', '0'))
                     
-
-                    od_ci_od = od_ci['<OD>']
+                    if MAX_WORKERS == 0:
+                        # Use 80% of available CPUs
+                        MAX_WORKERS = max(1, int(multiprocessing.cpu_count() * 0.8))
                     
-                    # Calculate fornt scale based on image size
-                    def calculate_font_scale(image_size, font_scale=2):
-                        new_scale =  font_scale * (image_size[0] / 1000)
-                        if new_scale > 10.0:
-                            return 4.0
-                        return new_scale
-                    font_scale = calculate_font_scale(cropped_image.shape)
-                    # print("Font scale: ", font_scale)
-                    # Draw the bounding boxes
-                    image_annotated_bbox_ci = self.draw_grid_bboxes(
-                        cropped_image,
-                        od_ci_od['bboxes'], 
-                        od_ci_od['labels'], 
-                        font_scale=font_scale, 
-                        padding=padding + 30)  
-
-                    # Do drc in the croped image
-                    drc_ci = self.llm_handler.describe_image(
-                        cropped_image, task_prompt=self.drc_prompt) 
-
-                    local_annotated_path_ci_base = f"{timestamp}_frame_{frame_number}_bbox_{index}_label_{label_main}_annotated_ci.jpg"
-                    # Create a path for the annotated image
-                    annotated_image_path_ci = os.path.join(
-                        self.workdir, local_annotated_path_ci_base)
-
-
-                    # Save the annotated image
-                    cv2.imwrite(annotated_image_path_ci,
-                                image_annotated_bbox_ci)
+                    print(f"[PARALLEL] Using {MAX_WORKERS} workers for crop processing")
                     
-                    remote_annotated_path_ci = f"{video_id}/{job_id}/images/annotated_images_ci/{local_annotated_path_ci_base}"
-                    # Upload the annotated image to MinIO
-                    self.client_minio.fput_object(
-                        bucket_name, remote_annotated_path_ci , annotated_image_path_ci)
-
-                    results_ci["drc"] = drc_ci['<MORE_DETAILED_CAPTION>']
-                    results_ci["od"] = od_ci_od
-                    results_ci["annotated_image"] = local_annotated_path_ci_base
-                    results_ci["annotated_image_remote"] = remote_annotated_path_ci
-                    
-                    od_results_crop.append(results_ci)
-                    
-                process_results["results"]["crop"] = od_results_crop
+                    if PARALLEL_PROCESSING and len(bboxes_to_process) > 1:
+                        # Prepare arguments for parallel processing
+                        crop_args = []
+                        for index, (bbox_main, label_main) in enumerate(bboxes_to_process):
+                            args = (
+                                image_path, bbox_main, label_main, index, timestamp,
+                                frame_number, video_id, job_id, bucket_name,
+                                scale_factor, padding, len(bboxes_to_process)
+                            )
+                            crop_args.append(args)
+                        
+                        # Process crops in parallel
+                        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                            futures = []
+                            for args in crop_args:
+                                future = executor.submit(self.process_single_crop, args)
+                                futures.append(future)
+                            
+                            # Collect results as they complete
+                            for future in as_completed(futures):
+                                result = future.result()
+                                if result:
+                                    od_results_crop.append(result)
+                                    
+                                    # Don't send individual crop callbacks in parallel mode
+                                    # They will be included in the main image result
+                    else:
+                        # Sequential processing (original code)
+                        for index, (bbox_main, label_main) in enumerate(bboxes_to_process):
+                            args = (
+                                image_path, bbox_main, label_main, index, timestamp,
+                                frame_number, video_id, job_id, bucket_name,
+                                scale_factor, padding, len(bboxes_to_process)
+                            )
+                            result = self.process_single_crop(args)
+                            if result:
+                                od_results_crop.append(result)
+                        
+                    process_results["results"]["crop"] = od_results_crop
                 
             detected_image_track.append(remote_patch)
             image_results.append(process_results)
+            
+            # Call the callback function after each image is processed
+            if callback_fn:
+                callback_fn(item_idx, len(details), timestamp, process_results)
 
         return image_results
 
+    def process_single_crop(self, args):
+        """Process a single crop - designed to be called in parallel"""
+        (
+            image_path, bbox_main, label_main, index, timestamp, 
+            frame_number, video_id, job_id, bucket_name, 
+            scale_factor, padding, total_crops
+        ) = args
+        
+        try:
+            label_main = label_main.replace(" ", "_").replace("/", "_")
+            results_ci = {}
+            
+            # Load image
+            image = cv2.imread(image_path)
+            
+            # Crop the image
+            cropped_image = self.crop_image(
+                image, bbox_main, from_llm=True, padding=padding
+            )
+            
+            # Enhance the image
+            cropped_image = self.enhance_image(
+                cropped_image, scale_factor=scale_factor
+            )
+            
+            # Do OD in the cropped image
+            label_es = self.translate_label(label_main)
+            print(f"[LLM] Processing crop {index+1}/{total_crops} - {label_es}")
+            od_ci = self.llm_handler.describe_image(
+                cropped_image, task_prompt=self.od_prompt
+            )
+            
+            od_ci_od = od_ci['<OD>']
+            
+            # Calculate font scale based on image size
+            def calculate_font_scale(image_size, font_scale=2):
+                new_scale = font_scale * (image_size[0] / 1000)
+                if new_scale > 10.0:
+                    return 4.0
+                return new_scale
+            
+            font_scale = calculate_font_scale(cropped_image.shape)
+            
+            # Draw the bounding boxes
+            image_annotated_bbox_ci = self.draw_grid_bboxes(
+                cropped_image,
+                od_ci_od['bboxes'], 
+                od_ci_od['labels'], 
+                font_scale=font_scale, 
+                padding=padding + 30
+            )
+            
+            # Do drc in the cropped image
+            drc_ci = self.llm_handler.describe_image(
+                cropped_image, task_prompt=self.drc_prompt
+            )
+            
+            local_annotated_path_ci_base = f"{timestamp}_frame_{frame_number}_bbox_{index}_label_{label_main}_annotated_ci.jpg"
+            annotated_image_path_ci = os.path.join(
+                self.workdir, local_annotated_path_ci_base
+            )
+            
+            # Save the annotated image
+            cv2.imwrite(annotated_image_path_ci, image_annotated_bbox_ci)
+            
+            remote_annotated_path_ci = f"{video_id}/{job_id}/images/annotated_images_ci/{local_annotated_path_ci_base}"
+            
+            # Upload the annotated image to MinIO
+            self.client_minio.fput_object(
+                bucket_name, remote_annotated_path_ci, annotated_image_path_ci
+            )
+            
+            results_ci["drc"] = drc_ci.get(self.drc_prompt, drc_ci.get('<MORE_DETAILED_CAPTION>', ''))
+            results_ci["od"] = od_ci_od
+            results_ci["annotated_image"] = local_annotated_path_ci_base
+            results_ci["annotated_image_remote"] = remote_annotated_path_ci
+            results_ci["crop_index"] = index
+            results_ci["label"] = label_main
+            
+            return results_ci
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to process crop {index}: {str(e)}")
+            return None
+    
     def draw_bounding_boxes(self, image_path, boxes):
         image = cv2.imread(image_path)
         for box in boxes:
@@ -420,6 +625,35 @@ class Application:
             timestamp: {} for timestamp in extracted_data.keys()
         }
         self.set_names(video_id=video_id)
+        
+        # Initialize complete results dictionary with flat structure
+        complete_results = {
+            "data": [],
+            "batch": {
+                "currentBatch": 1,
+                "batchSize": 1000,
+                "totalBatches": 0,
+                "totalItems": 0,
+                "startIndex": 0,
+                "endIndex": 0,
+                "itemsInBatch": 0,
+                "remainingItems": 0,
+                "hasMore": False,
+                "nextBatch": None,
+                "nextStartFrom": None,
+                "searchTerm": None,
+                "processingStats": {
+                    "totalTimestamps": len(extracted_data),
+                    "totalFrames": 0,
+                    "filteredItems": 0
+                }
+            },
+            "metadata": {
+                "video_id": video_id,
+                "job_id": job_id,
+                "model_id": model_id
+            }
+        }
 
         total_timestamps = len(extracted_data.items())
         print(f"\n[INFO] Processing {total_timestamps} timestamps...")
@@ -437,26 +671,116 @@ class Application:
             print(f"\n[TIMESTAMP {timestamp_idx+1}/{total_timestamps}] Processing timestamp: {timestamp}")
             print(f"[TIMESTAMP {timestamp}] Number of details to process: {len(details)}")
             
+            # Create callback to send results incrementally
+            def send_incremental_result(item_idx, total_items, timestamp, result):
+                # Process result to flat format if it contains crops
+                if "results" in result and "crop" in result["results"]:
+                    for crop_idx, crop_data in enumerate(result["results"]["crop"]):
+                        flat_item = {
+                            "timestamp": 0,  # Will need to convert timestamp to number
+                            "frameIndex": result.get("frame_number", 0),
+                            "cropIndex": crop_idx,
+                            "itemId": f"{timestamp}_{result.get('frame_number', 0)}_{crop_idx}",
+                            "description": crop_data.get("drc", ""),
+                            "confidence": 0,
+                            "bbox": crop_data.get("od", {}).get("bboxes", []),
+                            "label": self.translate_label(crop_data.get("label", "")),
+                            "fullFrame": result
+                        }
+                        complete_results["data"].append(flat_item)
+                else:
+                    # If no crops, add main result
+                    flat_item = {
+                        "timestamp": 0,
+                        "frameIndex": result.get("frame_number", 0),
+                        "cropIndex": 0,
+                        "itemId": f"{timestamp}_{result.get('frame_number', 0)}_0",
+                        "description": result.get("results", {}).get("main", {}).get("drc_main", ""),
+                        "confidence": 0,
+                        "bbox": [],
+                        "label": self.translate_label(result.get("main_object", "")),
+                        "fullFrame": result
+                    }
+                    complete_results["data"].append(flat_item)
+                
+                # Update batch statistics
+                complete_results["batch"]["totalItems"] = len(complete_results["data"])
+                complete_results["batch"]["itemsInBatch"] = len(complete_results["data"])
+                complete_results["batch"]["endIndex"] = len(complete_results["data"]) - 1
+                
+                # Save and upload updated complete.json
+                complete_json_path = os.path.join(self.workdir, "complete.json")
+                with open(complete_json_path, 'w') as f:
+                    json.dump(complete_results, f, indent=2)
+                
+                # Upload/overwrite complete.json in MinIO
+                complete_remote_path = f"{video_id}/{job_id}/fine_detections/complete.json"
+                self.client_minio.fput_object(
+                    self.bucket_name, complete_remote_path, complete_json_path)
+                
+                print(f"[UPDATE] Updated complete.json with item {item_idx+1}/{total_items} for timestamp {timestamp}")
+                
+                # Also save single result for reference
+                single_result_path = os.path.join(self.workdir, f"{timestamp}_item_{item_idx}.json")
+                with open(single_result_path, 'w') as f:
+                    json.dump({
+                        "timestamp": timestamp,
+                        "item_index": item_idx,
+                        "total_items": total_items,
+                        "data": result
+                    }, f)
+                
+                # Send to Kafka with complete.json path
+                self.kafka_handler.produce_message(
+                    topic=self.topic_output,
+                    message=json.dumps({
+                        "timestamp": timestamp,
+                        "item_index": item_idx,
+                        "total_items": total_items,
+                        "partial": True,
+                        "complete_json_path": f"{self.bucket_name}/{complete_remote_path}",
+                        "full_minio_path": f"{self.bucket_name}/{complete_remote_path}"
+                    }))
+                print(f"[KAFKA] Sent partial result {item_idx+1}/{total_items} for timestamp {timestamp}")
+            
             llm_results = self.process_details(
                 self.bucket_name,
                 details,
                 timestamp,
                 video_id,
-                job_id)
+                job_id,
+                callback_fn=send_incremental_result)
 
             timestamp_data_path = self.set_end_json(timestamp)
 
             detected_image_track[timestamp] = llm_results
+            
+            # No need to update here since callback already updated complete_results
+            # Just update final statistics
+            complete_results["batch"]["processingStats"]["totalFrames"] += len(llm_results)
 
             # Save the descriptions to a JSON file
             with open(timestamp_data_path, 'w') as f:
                 json.dump(detected_image_track, f)
 
             #########################################################
+            # Save final complete.json with all timestamps processed so far
+            complete_json_path = os.path.join(self.workdir, "complete.json")
+            complete_results["metadata"]["total_timestamps_processed"] = timestamp_idx + 1
+            complete_results["metadata"]["total_timestamps"] = len(items_to_process)
+            complete_results["metadata"]["status"] = "processing" if timestamp_idx + 1 < len(items_to_process) else "complete"
+            
+            # Update final batch stats
+            complete_results["batch"]["totalBatches"] = 1
+            complete_results["batch"]["hasMore"] = timestamp_idx + 1 < len(items_to_process)
+            
+            with open(complete_json_path, 'w') as f:
+                json.dump(complete_results, f, indent=2)
+            
             # Upload the complete data to MinIO
             json_remote_path = f"{video_id}/{job_id}/fine_detections/complete.json"
             self.client_minio.fput_object(
-                self.bucket_name, json_remote_path, timestamp_data_path)
+                self.bucket_name, json_remote_path, complete_json_path)
 
 
             #########################################################
@@ -473,13 +797,16 @@ class Application:
             # Full minio path
             full_minio_path = f"{self.bucket_name}/{video_id}/{job_id}/fine_detections/{timestamp}.json"
             #########################################################
-            # Send to Kafka the processed data
+            # Send final complete message to Kafka
             self.kafka_handler.produce_message(
                 topic=self.topic_output,
                 message=json.dumps({
                     "timestamp": timestamp,
+                    "partial": False,
+                    "complete": True,
                     "full_minio_path": full_minio_path
                 }))
+            print(f"[KAFKA] Sent COMPLETE result for timestamp {timestamp}")
             
         # Only mark as finished after all timestamps are processed
         self.updater.run(job_id, "Finished")
