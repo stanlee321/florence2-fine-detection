@@ -59,6 +59,9 @@ MAX_CROPS_PER_IMAGE=5 python main.py
 # Factor de escala para crops (default 8.0)
 SCALE_FACTOR=4.0 python main.py
 
+# COMANDO BRUTAL - Procesamiento súper rápido con paralelización máxima
+CROPS_ONLY=true PARALLEL_PROCESSING=true MAX_WORKERS=0 MAX_CROPS_PER_IMAGE=2 SCALE_FACTOR=4.0 python main.py
+
 # Combinación óptima para procesamiento rápido de crops
 CROPS_ONLY=true PARALLEL_PROCESSING=true MAX_WORKERS=0 python main.py
 

@@ -55,103 +55,10 @@ class Application:
         # LLM Handler
         self.llm_handler = LLMHandler(model_id=llm_model_id)
 
-        # Prompts en español
+        # Florence-2 prompts
         self.od_prompt = "<OD>"
-        self.drc_prompt = "Describe detalladamente en español lo que ves en esta imagen"
+        self.drc_prompt = "<MORE_DETAILED_CAPTION>"
         
-        # Diccionario de traducción de etiquetas
-        self.label_translations = {
-            "person": "persona",
-            "car": "auto",
-            "truck": "camión",
-            "bus": "autobús",
-            "motorcycle": "motocicleta",
-            "bicycle": "bicicleta",
-            "backpack": "mochila",
-            "handbag": "bolso",
-            "suitcase": "maleta",
-            "bottle": "botella",
-            "cup": "taza",
-            "fork": "tenedor",
-            "knife": "cuchillo",
-            "spoon": "cuchara",
-            "bowl": "tazón",
-            "banana": "plátano",
-            "apple": "manzana",
-            "sandwich": "sándwich",
-            "orange": "naranja",
-            "broccoli": "brócoli",
-            "carrot": "zanahoria",
-            "hot dog": "hot dog",
-            "pizza": "pizza",
-            "donut": "dona",
-            "cake": "pastel",
-            "chair": "silla",
-            "couch": "sofá",
-            "potted plant": "planta en maceta",
-            "bed": "cama",
-            "dining table": "mesa de comedor",
-            "toilet": "inodoro",
-            "tv": "televisor",
-            "laptop": "laptop",
-            "mouse": "ratón",
-            "remote": "control remoto",
-            "keyboard": "teclado",
-            "cell phone": "teléfono celular",
-            "microwave": "microondas",
-            "oven": "horno",
-            "toaster": "tostadora",
-            "sink": "lavabo",
-            "refrigerator": "refrigerador",
-            "book": "libro",
-            "clock": "reloj",
-            "vase": "florero",
-            "scissors": "tijeras",
-            "teddy bear": "oso de peluche",
-            "hair drier": "secador de pelo",
-            "toothbrush": "cepillo de dientes",
-            "sneakers": "zapatillas",
-            "walking_shoe": "zapato para caminar",
-            "shoe": "zapato",
-            "hat": "sombrero",
-            "cap": "gorra",
-            "sunglasses": "lentes de sol",
-            "bag": "bolsa",
-            "tie": "corbata",
-            "suitcase": "maleta",
-            "frisbee": "frisbee",
-            "skis": "esquís",
-            "snowboard": "tabla de snowboard",
-            "sports ball": "pelota deportiva",
-            "kite": "cometa",
-            "baseball bat": "bate de béisbol",
-            "baseball glove": "guante de béisbol",
-            "skateboard": "patineta",
-            "surfboard": "tabla de surf",
-            "tennis racket": "raqueta de tenis",
-            "umbrella": "paraguas",
-            "wheel": "rueda",
-            "suv": "camioneta",
-            "minivan": "minivan",
-            "sedan": "sedán",
-            "van": "furgoneta",
-            "pickup truck": "camioneta pickup",
-            "traffic light": "semáforo",
-            "fire hydrant": "hidrante",
-            "stop sign": "señal de alto",
-            "parking meter": "parquímetro",
-            "bench": "banca",
-            "bird": "pájaro",
-            "cat": "gato",
-            "dog": "perro",
-            "horse": "caballo",
-            "sheep": "oveja",
-            "cow": "vaca",
-            "elephant": "elefante",
-            "bear": "oso",
-            "zebra": "cebra",
-            "giraffe": "jirafa"
-        }
         self.bucket_name = bucket_name
         
         self.topic_output = topic_output
@@ -171,12 +78,6 @@ class Application:
         image_path = os.path.join(self.workdir, remote_path.split("/")[-1])
         return image_path
     
-    def translate_label(self, label: str) -> str:
-        """Traduce etiquetas de inglés a español"""
-        # Convertir a minúsculas para buscar
-        label_lower = label.lower()
-        # Si existe traducción, usarla. Si no, devolver original
-        return self.label_translations.get(label_lower, label)
 
     @staticmethod
     def parse_string(input_string):
@@ -522,8 +423,8 @@ class Application:
             )
             
             # Do OD in the cropped image
-            label_es = self.translate_label(label_main)
-            print(f"[LLM] Processing crop {index+1}/{total_crops} - {label_es}")
+            label_en = label_main
+            print(f"[LLM] Processing crop {index+1}/{total_crops} - {label_en}")
             od_ci = self.llm_handler.describe_image(
                 cropped_image, task_prompt=self.od_prompt
             )
@@ -626,34 +527,8 @@ class Application:
         }
         self.set_names(video_id=video_id)
         
-        # Initialize complete results dictionary with flat structure
-        complete_results = {
-            "data": [],
-            "batch": {
-                "currentBatch": 1,
-                "batchSize": 1000,
-                "totalBatches": 0,
-                "totalItems": 0,
-                "startIndex": 0,
-                "endIndex": 0,
-                "itemsInBatch": 0,
-                "remainingItems": 0,
-                "hasMore": False,
-                "nextBatch": None,
-                "nextStartFrom": None,
-                "searchTerm": None,
-                "processingStats": {
-                    "totalTimestamps": len(extracted_data),
-                    "totalFrames": 0,
-                    "filteredItems": 0
-                }
-            },
-            "metadata": {
-                "video_id": video_id,
-                "job_id": job_id,
-                "model_id": model_id
-            }
-        }
+        # Initialize complete results dictionary with legacy format
+        complete_results = {}
 
         total_timestamps = len(extracted_data.items())
         print(f"\n[INFO] Processing {total_timestamps} timestamps...")
@@ -673,45 +548,27 @@ class Application:
             
             # Create callback to send results incrementally
             def send_incremental_result(item_idx, total_items, timestamp, result):
-                # Process result to flat format if it contains crops
-                if "results" in result and "crop" in result["results"]:
-                    for crop_idx, crop_data in enumerate(result["results"]["crop"]):
-                        flat_item = {
-                            "timestamp": 0,  # Will need to convert timestamp to number
-                            "frameIndex": result.get("frame_number", 0),
-                            "cropIndex": crop_idx,
-                            "itemId": f"{timestamp}_{result.get('frame_number', 0)}_{crop_idx}",
-                            "description": crop_data.get("drc", ""),
-                            "confidence": 0,
-                            "bbox": crop_data.get("od", {}).get("bboxes", []),
-                            "label": self.translate_label(crop_data.get("label", "")),
-                            "fullFrame": result
-                        }
-                        complete_results["data"].append(flat_item)
-                else:
-                    # If no crops, add main result
-                    flat_item = {
-                        "timestamp": 0,
-                        "frameIndex": result.get("frame_number", 0),
-                        "cropIndex": 0,
-                        "itemId": f"{timestamp}_{result.get('frame_number', 0)}_0",
-                        "description": result.get("results", {}).get("main", {}).get("drc_main", ""),
-                        "confidence": 0,
-                        "bbox": [],
-                        "label": self.translate_label(result.get("main_object", "")),
-                        "fullFrame": result
-                    }
-                    complete_results["data"].append(flat_item)
+                # Add to legacy format: timestamp -> results array
+                if timestamp not in complete_results:
+                    complete_results[timestamp] = []
                 
-                # Update batch statistics
-                complete_results["batch"]["totalItems"] = len(complete_results["data"])
-                complete_results["batch"]["itemsInBatch"] = len(complete_results["data"])
-                complete_results["batch"]["endIndex"] = len(complete_results["data"]) - 1
+                # Add result in legacy format (keep original structure)
+                complete_results[timestamp].append(result)
                 
                 # Save and upload updated complete.json
                 complete_json_path = os.path.join(self.workdir, "complete.json")
+                complete_data = {
+                    "video_id": video_id,
+                    "job_id": job_id,
+                    "model_id": "florence-2",
+                    "total_timestamps_processed": len([k for k in complete_results.keys() if k != "status"]),
+                    "total_timestamps": len(items_to_process),
+                    "status": "processing",
+                    "timestamps": complete_results
+                }
+                
                 with open(complete_json_path, 'w') as f:
-                    json.dump(complete_results, f, indent=2)
+                    json.dump(complete_data, f, indent=2)
                 
                 # Upload/overwrite complete.json in MinIO
                 complete_remote_path = f"{video_id}/{job_id}/fine_detections/complete.json"
@@ -719,16 +576,6 @@ class Application:
                     self.bucket_name, complete_remote_path, complete_json_path)
                 
                 print(f"[UPDATE] Updated complete.json with item {item_idx+1}/{total_items} for timestamp {timestamp}")
-                
-                # Also save single result for reference
-                single_result_path = os.path.join(self.workdir, f"{timestamp}_item_{item_idx}.json")
-                with open(single_result_path, 'w') as f:
-                    json.dump({
-                        "timestamp": timestamp,
-                        "item_index": item_idx,
-                        "total_items": total_items,
-                        "data": result
-                    }, f)
                 
                 # Send to Kafka with complete.json path
                 self.kafka_handler.produce_message(
@@ -754,33 +601,10 @@ class Application:
             timestamp_data_path = self.set_end_json(timestamp)
 
             detected_image_track[timestamp] = llm_results
-            
-            # No need to update here since callback already updated complete_results
-            # Just update final statistics
-            complete_results["batch"]["processingStats"]["totalFrames"] += len(llm_results)
 
             # Save the descriptions to a JSON file
             with open(timestamp_data_path, 'w') as f:
                 json.dump(detected_image_track, f)
-
-            #########################################################
-            # Save final complete.json with all timestamps processed so far
-            complete_json_path = os.path.join(self.workdir, "complete.json")
-            complete_results["metadata"]["total_timestamps_processed"] = timestamp_idx + 1
-            complete_results["metadata"]["total_timestamps"] = len(items_to_process)
-            complete_results["metadata"]["status"] = "processing" if timestamp_idx + 1 < len(items_to_process) else "complete"
-            
-            # Update final batch stats
-            complete_results["batch"]["totalBatches"] = 1
-            complete_results["batch"]["hasMore"] = timestamp_idx + 1 < len(items_to_process)
-            
-            with open(complete_json_path, 'w') as f:
-                json.dump(complete_results, f, indent=2)
-            
-            # Upload the complete data to MinIO
-            json_remote_path = f"{video_id}/{job_id}/fine_detections/complete.json"
-            self.client_minio.fput_object(
-                self.bucket_name, json_remote_path, complete_json_path)
 
 
             #########################################################
@@ -808,6 +632,28 @@ class Application:
                 }))
             print(f"[KAFKA] Sent COMPLETE result for timestamp {timestamp}")
             
+        # Update final complete.json with "complete" status
+        complete_json_path = os.path.join(self.workdir, "complete.json")
+        final_complete_data = {
+            "video_id": video_id,
+            "job_id": job_id,
+            "model_id": "florence-2",
+            "total_timestamps_processed": len(complete_results),
+            "total_timestamps": len(items_to_process),
+            "status": "complete",
+            "timestamps": complete_results
+        }
+        
+        with open(complete_json_path, 'w') as f:
+            json.dump(final_complete_data, f, indent=2)
+        
+        # Upload final complete.json
+        complete_remote_path = f"{video_id}/{job_id}/fine_detections/complete.json"
+        self.client_minio.fput_object(
+            self.bucket_name, complete_remote_path, complete_json_path)
+        
+        print(f"[UPDATE] Final complete.json uploaded with status: complete")
+        
         # Only mark as finished after all timestamps are processed
         self.updater.run(job_id, "Finished")
 

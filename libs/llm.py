@@ -6,11 +6,15 @@ from PIL import Image
 from typing import Union
 from transformers import AutoProcessor, AutoModelForCausalLM
 import logging
+import warnings
+
+# Suppress the Florence2 generation warning
+warnings.filterwarnings("ignore", message=".*Florence2LanguageForConditionalGeneration.*")
 
 
 class LLMHandler:
 
-    # Cargar Florence-2
+    # Load Florence-2
     DEVICE = torch.device("cuda" if torch.cuda.is_available()
                           else "cpu")  # mps not supported yet
 
@@ -32,13 +36,13 @@ class LLMHandler:
 
     def inference_over_image(self, pil_image: Image, task_prompt: str):
         
-        # Preparar entrada para Florence-2
+        # Prepare input for Florence-2
         prep_start = time.time()
         inputs = self.processor(
             text=task_prompt, images=pil_image, return_tensors="pt").to(self.DEVICE)
         prep_time = time.time() - prep_start
 
-        # Generar detección de color
+        # Generate detection
         inference_start = time.time()
         with torch.no_grad():
             generated_ids = self.model.generate(
@@ -56,22 +60,22 @@ class LLMHandler:
     def describe_color(self, image: Union[np.ndarray, str], prompt: str):
         if "color" not in prompt:
             raise ValueError("Prompt must contain the word 'color'.")
-        # Procesar la imagen
+        # Process the image
         if isinstance(image, str):
             image = cv2.imread(image)
         
-        # Convertir imagen a PIL
+        # Convert image to PIL
         # print("Input res: ", image.shape)
         pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         
-        # Inferir sobre la imagen
+        # Infer over the image
         generated_ids = self.inference_over_image(pil_image, prompt)
 
-        # Decodificar y procesar la respuesta
+        # Decode and process the response
         generated_text = self.processor.batch_decode(
             generated_ids, skip_special_tokens=False)[0]
 
-        # Imprimir el texto generado para depuración
+        # Print generated text for debugging
         # print("Generated text COLOR:", generated_text)
 
         # Buscar la etiqueta de color en la respuesta
@@ -90,35 +94,24 @@ class LLMHandler:
             print(f"[LLM] Loading image from: {image}")
             image = cv2.imread(image)
             
-        # Convertir imagen a PIL
+        # Convert image to PIL
         print(f"[LLM] Processing image shape: {image.shape}, task: {task_prompt}")
         pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         
-        # Inferir sobre la imagen
+        # Infer over the image
         generated_ids = self.inference_over_image(pil_image, task_prompt)
 
-        # Decodificar y procesar la respuesta
+        # Decode and process the response
         generated_text = self.processor.batch_decode(
             generated_ids, skip_special_tokens=False)[0]
 
-        # Procesar la respuesta
+        # Process the response
         parsed_answer = self.processor.post_process_generation(
             generated_text,
             task=task_prompt,
             image_size=(pil_image.width, pil_image.height)
         )
         
-        # Si el prompt es para descripción en español, extraer solo el texto
-        if "español" in task_prompt and isinstance(parsed_answer, dict):
-            # El modelo puede devolver diferentes formatos, intentar extraer el texto
-            if task_prompt in parsed_answer:
-                parsed_answer = {task_prompt: parsed_answer[task_prompt]}
-            else:
-                # Si no encuentra la key exacta, buscar la primera que contenga texto
-                for key, value in parsed_answer.items():
-                    if isinstance(value, str) and len(value) > 10:
-                        parsed_answer = {task_prompt: value}
-                        break
         
         total_time = time.time() - start_time
         print(f"[LLM] Total time for describe_image: {total_time:.3f}s")
