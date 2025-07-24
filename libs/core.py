@@ -9,6 +9,7 @@ from typing import List, Union
 from minio import Minio
 import requests
 import uuid
+import time
 
 # MinIO
 from libs.queues import KafkaHandler
@@ -225,8 +226,11 @@ class Application:
 
         image_results = []
         detected_image_track = []
+        
+        print(f"[process_details] Starting to process {len(details)} items for timestamp {timestamp}")
 
-        for item in details:
+        for item_idx, item in enumerate(details):
+            print(f"\n[ITEM {item_idx+1}/{len(details)}] Processing item...")
             # A lot of images will be repeated, so we need to avoid processing them again
             remote_patch = item["s3_path"]
 
@@ -244,14 +248,20 @@ class Application:
 
             # Download the a
             image_path = self.get_local_path(remote_patch)
+            print(f"[MinIO] Downloading image: {remote_patch}")
+            download_start = time.time()
             self.client_minio.fget_object(
                 bucket_name, remote_patch, image_path)
+            download_time = time.time() - download_start
+            print(f"[MinIO] Downloaded in {download_time:.2f}s")
 
             # Describe whole image first.
+            print(f"[LLM] Starting DRC (detailed caption) for main image...")
             drc_main = self.llm_handler.describe_image(
                 image_path, task_prompt=self.drc_prompt)
 
             # OD in the whole image
+            print(f"[LLM] Starting OD (object detection) for main image...")
             od_main = self.llm_handler.describe_image(
                 image_path, task_prompt=self.od_prompt)
 
@@ -310,6 +320,7 @@ class Application:
                         cropped_image, scale_factor=scale_factor)
                     
                     # Do OD in the croped image
+                    print(f"[LLM] Processing crop {index+1}/{len(od_main_od['bboxes'])} - {label_main}")
                     od_ci = self.llm_handler.describe_image(
                         cropped_image, task_prompt=self.od_prompt)
                     
@@ -410,8 +421,22 @@ class Application:
         }
         self.set_names(video_id=video_id)
 
-        for timestamp, details in tqdm(extracted_data.items()):
-
+        total_timestamps = len(extracted_data.items())
+        print(f"\n[INFO] Processing {total_timestamps} timestamps...")
+        
+        # Check if we should limit processing (debug mode)
+        DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+        MAX_TIMESTAMPS = int(os.getenv('MAX_TIMESTAMPS', '0'))
+        
+        items_to_process = list(extracted_data.items())
+        if DEBUG_MODE and MAX_TIMESTAMPS > 0:
+            items_to_process = items_to_process[:MAX_TIMESTAMPS]
+            print(f"[DEBUG] Limiting to first {MAX_TIMESTAMPS} timestamps")
+        
+        for timestamp_idx, (timestamp, details) in enumerate(tqdm(items_to_process, desc="Timestamps")):
+            print(f"\n[TIMESTAMP {timestamp_idx+1}/{total_timestamps}] Processing timestamp: {timestamp}")
+            print(f"[TIMESTAMP {timestamp}] Number of details to process: {len(details)}")
+            
             llm_results = self.process_details(
                 self.bucket_name,
                 details,
@@ -456,7 +481,8 @@ class Application:
                     "full_minio_path": full_minio_path
                 }))
             
-            self.updater.run(job_id, "Finished")
+        # Only mark as finished after all timestamps are processed
+        self.updater.run(job_id, "Finished")
 
 
     def get_uuid(self):

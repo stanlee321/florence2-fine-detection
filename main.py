@@ -1,6 +1,7 @@
 from libs.core import Application
 import os
 from dotenv import load_dotenv
+import sys
 
 load_dotenv()  
 
@@ -21,7 +22,15 @@ BACKEND_BASE_URL = f"http://{SERVER_IP}:3001"
 
 
 if __name__ == '__main__':
-
+    # Check for debug mode
+    DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+    MAX_TIMESTAMPS = int(os.getenv('MAX_TIMESTAMPS', '0'))  # 0 = process all
+    
+    if DEBUG_MODE:
+        print("\n[DEBUG MODE ENABLED]")
+        if MAX_TIMESTAMPS > 0:
+            print(f"[DEBUG] Will process only first {MAX_TIMESTAMPS} timestamps")
+        print("\n")
 
     # Kafka topics
     topic_input = 'video-input-details'

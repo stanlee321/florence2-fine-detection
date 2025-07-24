@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from typing import Union
 from transformers import AutoProcessor, AutoModelForCausalLM
+import logging
 
 
 class LLMHandler:
@@ -14,18 +15,31 @@ class LLMHandler:
                           else "cpu")  # mps not supported yet
 
     def __init__(self, model_id: str = "microsoft/Florence-2-base-ft"):
+        print(f"\n[LLM] Initializing Florence-2 model...")
+        print(f"[LLM] Device: {self.DEVICE}")
+        print(f"[LLM] CUDA available: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            print(f"[LLM] CUDA device: {torch.cuda.get_device_name(0)}")
+            print(f"[LLM] CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+        
+        load_start = time.time()
         self.model = AutoModelForCausalLM.from_pretrained(
             model_id, trust_remote_code=True).to(self.DEVICE)
         self.processor = AutoProcessor.from_pretrained(
             model_id, trust_remote_code=True)
+        load_time = time.time() - load_start
+        print(f"[LLM] Model loaded in {load_time:.2f}s")
 
     def inference_over_image(self, pil_image: Image, task_prompt: str):
         
         # Preparar entrada para Florence-2
+        prep_start = time.time()
         inputs = self.processor(
             text=task_prompt, images=pil_image, return_tensors="pt").to(self.DEVICE)
+        prep_time = time.time() - prep_start
 
         # Generar detección de color
+        inference_start = time.time()
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids=inputs["input_ids"],
@@ -35,6 +49,8 @@ class LLMHandler:
                 # do_sample=False,
                 early_stopping=True
             )
+        inference_time = time.time() - inference_start
+        print(f"[LLM] Inference completed - Task: {task_prompt}, Prep: {prep_time:.3f}s, Inference: {inference_time:.3f}s")
         return generated_ids
     
     def describe_color(self, image: Union[np.ndarray, str], prompt: str):
@@ -56,7 +72,7 @@ class LLMHandler:
             generated_ids, skip_special_tokens=False)[0]
 
         # Imprimir el texto generado para depuración
-        print("Generated text COLOR:", generated_text)
+        # print("Generated text COLOR:", generated_text)
 
         # Buscar la etiqueta de color en la respuesta
         if 'The color of the' in generated_text:
@@ -68,12 +84,14 @@ class LLMHandler:
 
 
     def describe_image(self, image: Union[np.ndarray, str], task_prompt: str):
-
+        start_time = time.time()
+        
         if isinstance(image, str):
+            print(f"[LLM] Loading image from: {image}")
             image = cv2.imread(image)
             
         # Convertir imagen a PIL
-        # print("Input res: ", image.shape)
+        print(f"[LLM] Processing image shape: {image.shape}, task: {task_prompt}")
         pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         
         # Inferir sobre la imagen
@@ -89,6 +107,9 @@ class LLMHandler:
             task=task_prompt,
             image_size=(pil_image.width, pil_image.height)
         )
+        
+        total_time = time.time() - start_time
+        print(f"[LLM] Total time for describe_image: {total_time:.3f}s")
 
         return parsed_answer
 
