@@ -10,6 +10,7 @@ from minio import Minio
 import requests
 import uuid
 import time
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
 
@@ -143,6 +144,11 @@ class Application:
 
         output_image = image.copy()
         for bbox, label in zip(bboxes, labels):
+            # Skip invalid bboxes
+            if any(coord is None for coord in bbox):
+                print(f"Warning: Skipping invalid bbox with None values: {bbox}")
+                continue
+            
             start_point = (int(bbox[0]), int(bbox[1]))
             end_point = (int(bbox[2]), int(bbox[3]))
             
@@ -150,6 +156,11 @@ class Application:
             # clear way
             start_point = (max(0, start_point[0] - padding), max(0, start_point[1] - padding))
             end_point = (min(image.shape[1], end_point[0] + padding), min(image.shape[0], end_point[1] + padding))
+            
+            # Skip if bbox is invalid after padding
+            if start_point[0] >= end_point[0] or start_point[1] >= end_point[1]:
+                print(f"Warning: Skipping invalid bbox after padding: start={start_point}, end={end_point}")
+                continue
             
             
             # Calculate number of grid lines within the bounding box
@@ -239,6 +250,15 @@ class Application:
             print(f"\n[ITEM {item_idx+1}/{len(details)}] Processing item...")
             # A lot of images will be repeated, so we need to avoid processing them again
             remote_patch = item["s3_path"]
+            
+            # Fix URLs if they contain minio.lookia.mx
+            if remote_patch and 'minio.lookia.mx' in remote_patch:
+                # Extract just the path part after the bucket
+                if '/my-bucket/' in remote_patch:
+                    path_parts = remote_patch.split('/my-bucket/', 1)
+                    if len(path_parts) > 1:
+                        remote_patch = path_parts[1]
+                        print(f"[URL FIX] Extracted MinIO path: {remote_patch}")
 
             if remote_patch in detected_image_track:
                 continue
@@ -295,11 +315,23 @@ class Application:
 
             }
             
-            od_main_od = od_main['<OD>']
-            if len(od_main_od['bboxes']) > 0:
+            od_main_od = od_main.get('<OD>', {'bboxes': [], 'labels': []})
+            print(f"[DEBUG] od_main_od content: {od_main_od}")
+            
+            # Validate bboxes
+            valid_bboxes = []
+            valid_labels = []
+            for bbox, label in zip(od_main_od.get('bboxes', []), od_main_od.get('labels', [])):
+                if bbox is not None and all(coord is not None for coord in bbox):
+                    valid_bboxes.append(bbox)
+                    valid_labels.append(label)
+                else:
+                    print(f"[WARNING] Skipping invalid bbox: {bbox} with label: {label}")
+            
+            if len(valid_bboxes) > 0:
                 # Draw the bounding boxes
                 image_annotated = self.draw_grid_bboxes(
-                    image_path, od_main_od['bboxes'], od_main_od['labels'])
+                    image_path, valid_bboxes, valid_labels)
 
                 # Create a path for the annotated image
                 annotated_image_path = os.path.join(
@@ -491,6 +523,11 @@ class Application:
         return image
 
     def download_file_using_requests(self, url, local_path):
+        # Replace minio.lookia.mx with localhost:9000
+        if 'minio.lookia.mx' in url:
+            url = url.replace('https://minio.lookia.mx', 'http://localhost:9000')
+            print(f"[URL FIX] Replaced minio.lookia.mx with localhost:9000: {url}")
+        
         response = requests.get(url)
         with open(local_path, 'wb') as f:
             f.write(response.content)
@@ -656,6 +693,15 @@ class Application:
         
         # Only mark as finished after all timestamps are processed
         self.updater.run(job_id, "Finished")
+        
+        # Clean up temporary files
+        try:
+            if self.workdir and os.path.exists(self.workdir):
+                print(f"[CLEANUP] Removing temporary directory: {self.workdir}")
+                shutil.rmtree(self.workdir)
+                print(f"[CLEANUP] Temporary files cleaned successfully")
+        except Exception as e:
+            print(f"[CLEANUP] Warning: Failed to clean temporary files: {e}")
 
 
     def get_uuid(self):
